@@ -5,7 +5,7 @@
 # @Author       :https://github.com/vincenschan/
 # @Description  :
 
-
+import json
 import requests
 
 from .base import timer
@@ -72,7 +72,7 @@ class VLLMInference():
                 {"role": "user", "content": content}
             ],
             "temperature": 0.5,
-            "max_tokens": 256,
+            # "max_tokens": 256,
             "thought_control": {
                 "enable": False,
                 "max_thought_tokens": 0  # 强制0思考token
@@ -81,6 +81,39 @@ class VLLMInference():
         response = requests.post(url, json=payload)
         # print("**Output: %s" % response.json()["content"])
         return response.json()["content"]
+
+
+    def bge_embedding(self, contents: list, url="http://localhost:5000/v1/embeddings", model_name="bge-m3", **kwargs):
+        """
+
+        :param contents: LIST格式
+        :param url:
+        :param model_name:
+        :return:
+        """
+
+        headers = {
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model": model_name,
+            "input": contents
+        }
+
+        response = requests.post(url, headers=headers, data=json.dumps(data))
+        embeddings = []
+        if response.status_code == 200:
+            results = response.json().get("data", [])
+            for i, item in enumerate(results):
+                vector = item["embedding"]
+                embeddings.append(vector)
+                print(f"文本: {contents[i]}")
+                print(f"向量长度: {len(vector)}")
+                print(f"前5维示例: {vector[:5]}")
+                print("-" * 40)
+        else:
+            print(f"请求失败，状态码：{response.status_code}")
+        return response
 
 
 if __name__ == "__main__":
