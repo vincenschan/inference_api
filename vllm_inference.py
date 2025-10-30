@@ -7,7 +7,8 @@
 
 import json
 import requests
-
+import re
+import json
 from .base import timer
 
 """
@@ -21,38 +22,49 @@ CUDA_VISIBLE_DEVICES=0,1 python3 -m vllm.entrypoints.openai.api_server --model Q
 
 class VLLMInference():
 
-    def inference(self, url, model_name, prompt, content):
+    def inference(self, url, model_name, sys_prompt, user_content, return_json=False, **kwargs):
         """
         LLM VLLM & SGLANG 私有化部署，通过API调用
-
-        VLLM部署脚本example:
+        部署脚本example:
             python3 -m vllm.entrypoints.openai.api_server --model /path/to/Qwen-7B-Chat --trust-remote-code --port 8000
         :param url: 模型部署的URL
         :param model_name: 模型名称
-        :param prompt:
-        :param content:
+        :param sys_prompt:
+        :param user_content:
+        :param return_json: 是否需要返回原始json结果
+        :param kwargs:
         :return:
         """
-        # response = requests.get(url + "/v1/models")  # + "/v1/models"
-        # print("*models:", response.json())
         url = url + "/v1/chat/completions"
         payload = {
             "model": model_name,
             "messages": [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": content}
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_content}
             ],
-            "temperature": 0.5,
-            "max_tokens": 256,
-            "thought_control": {
+        }
+        if 'max_tokens' in kwargs:
+            default_max_tokens = 32000 if "qwen3" in model_name.lower() else 8192
+            max_tokens = kwargs.get('max_tokens', default_max_tokens)
+            payload.update({"max_tokens": max_tokens})
+        if "thought_control" in kwargs:
+            payload.update({"thought_control": kwargs.get('thought_control', {
                 "enable": False,
                 "max_thought_tokens": 0  # 强制0思考token
-            }
-        }
-        response = requests.post(url, json=payload)
-        # print("response:", response)
-        # print("**Output: %s" % response.json()['choices'][0]['message']['content'])
-        return response.json()['choices'][0]['message']['content']
+            })})
+        if "temperature" in kwargs:
+            payload.update({"temperature": kwargs.get('temperature', 1)})
+
+        resp = requests.post(url, json=payload)
+        # print(f"URL: {url}, response: {resp}")
+        response_json = resp.json()
+
+        if not return_json and "qwen3" in model_name.lower():
+            response = response_json['choices'][0]["message"]["content"]
+            response_no_think = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL)
+            # print(f"**Output: {response}, no_think: {response_no_think}")
+            return response_no_think
+        return return_json
 
     def inference_embed(self, url, model_name, prompt, content):
         """
